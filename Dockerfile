@@ -23,6 +23,7 @@ COPY backend/ /app/
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5001
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV QUARK_STATE_PATH=/etc/secrets/quark_state.json
 
 EXPOSE 5001
 

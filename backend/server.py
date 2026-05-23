@@ -26,6 +26,9 @@ saved_resources = {}
 # 夸克 Playwright persistent context 用户数据目录
 USER_DATA_DIR = os.path.join(tempfile.gettempdir(), "quark_playwright_profile")
 
+# 夸克认证文件路径（Render Secret File 会挂载到 /etc/secrets/）
+QUARK_STATE_PATH = os.environ.get("QUARK_STATE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "quark_state.json"))
+
 # 转存缓存文件
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "transfer_cache.json")
 
@@ -65,6 +68,18 @@ async def transfer_quark_link(real_url):
                     get: () => false
                 });
             """)
+
+            # 从 quark_state.json 恢复 cookie（Secret File 注入）
+            if os.path.exists(QUARK_STATE_PATH):
+                try:
+                    with open(QUARK_STATE_PATH, "r", encoding="utf-8") as f:
+                        state_data = json.load(f)
+                    cookies = state_data.get("cookies", [])
+                    if cookies:
+                        await context.add_cookies(cookies)
+                        print(f"[Quark] 已从 {QUARK_STATE_PATH} 恢复 {len(cookies)} 个 cookie")
+                except Exception as e:
+                    print(f"[Quark] 恢复 cookie 失败: {e}")
 
             page = await context.new_page()
 
@@ -705,7 +720,9 @@ def transfer_quark():
 def health():
     return jsonify({
         "status": "ok",
-        "quark_profile_ready": os.path.exists(USER_DATA_DIR),
+        "quark_profile_ready": os.path.exists(QUARK_STATE_PATH),
+        "quark_state_path": QUARK_STATE_PATH,
+        "quark_state_exists": os.path.exists(QUARK_STATE_PATH),
         "timestamp": time.time()
     })
 
