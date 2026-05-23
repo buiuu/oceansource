@@ -508,10 +508,10 @@ async def search_and_get_real_urls(keyword, max_results=10):
     try:
         async with aiohttp.ClientSession() as session:
             # 拉取适量候选（请求 2 倍量），避免 Render 超时
-            fetch_limit = max(max_results * 2, 20)
+            fetch_limit = max(max_results * 3, 30)
             async with session.get(
                 "https://so.252035.xyz/api/search",
-                params={"q": keyword, "limit": fetch_limit, "type": "quark"},
+                params={"q": keyword, "limit": fetch_limit},
                 timeout=20
             ) as resp:
                 if resp.status == 200:
@@ -519,11 +519,10 @@ async def search_and_get_real_urls(keyword, max_results=10):
                     if "data" in data and data["data"]:
                         # PanSou 返回 merged_by_type，按网盘类型分组
                         merged = data["data"].get("merged_by_type", {})
-                        items = merged.get("quark", [])
-                        if not items:
-                            # 所有类型汇总
-                            for type_key, type_items in merged.items():
-                                items.extend(type_items)
+                        # 汇总所有网盘类型的结果
+                        items = []
+                        for type_items in merged.values():
+                            items.extend(type_items)
 
                         # 构建所有候选结果
                         all_results = []
@@ -539,10 +538,12 @@ async def search_and_get_real_urls(keyword, max_results=10):
                                 "transferred": False
                             })
 
-                        # 关键词相关性排序：统计标题中匹配到的关键词字符数，匹配越多排越前
+                        # 关键词相关性过滤+排序：至少匹配 1 个字符才保留
                         kw_chars = set(keyword.replace(" ", ""))
                         for r in all_results:
                             r["_score"] = sum(1 for c in kw_chars if c in r["name"])
+                        # 过滤掉完全不匹配的
+                        all_results = [r for r in all_results if r["_score"] > 0]
                         all_results.sort(key=lambda r: r["_score"], reverse=True)
                         results = all_results[:max_results]
                         for r in results:
