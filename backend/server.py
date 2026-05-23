@@ -476,9 +476,11 @@ async def search_and_get_real_urls(keyword, max_results=10):
     # 尝试 PanSou API
     try:
         async with aiohttp.ClientSession() as session:
+            # 多拉一些候选（请求 3 倍量），后续按关键词相关性筛选
+            fetch_limit = max(max_results * 3, 30)
             async with session.get(
                 "https://so.252035.xyz/api/search",
-                params={"q": keyword, "limit": max_results, "type": "quark"},
+                params={"q": keyword, "limit": fetch_limit, "type": "quark"},
                 timeout=20
             ) as resp:
                 if resp.status == 200:
@@ -491,9 +493,11 @@ async def search_and_get_real_urls(keyword, max_results=10):
                             # 所有类型汇总
                             for type_key, type_items in merged.items():
                                 items.extend(type_items)
-                        results = []
-                        for item in items[:max_results]:
-                            results.append({
+
+                        # 构建所有候选结果
+                        all_results = []
+                        for item in items:
+                            all_results.append({
                                 "name": item.get("note", ""),
                                 "time": item.get("datetime", ""),
                                 "time_label": "",
@@ -503,6 +507,17 @@ async def search_and_get_real_urls(keyword, max_results=10):
                                 "real_url": item.get("url", ""),
                                 "transferred": False
                             })
+
+                        # 关键词相关性过滤：标题必须包含搜索词中的至少一个字
+                        kw_chars = set(keyword.replace(" ", ""))
+                        matched = [r for r in all_results if any(c in r["name"] for c in kw_chars)]
+                        unmatched = [r for r in all_results if r not in matched]
+
+                        # 优先展示匹配的，不够 max_results 时用未匹配的补齐
+                        results = matched[:max_results]
+                        if len(results) < max_results:
+                            results += unmatched[:max_results - len(results)]
+
                         # 标记夸克链接
                         quark_urls = [
                             item["real_url"] for item in results
@@ -510,7 +525,7 @@ async def search_and_get_real_urls(keyword, max_results=10):
                         ]
                         if quark_urls and os.path.exists(USER_DATA_DIR):
                             print(f"[Quark] 后台转存 {len(quark_urls)} 个链接")
-                        print(f"[Search] PanSou API 返回 {len(results)} 个结果")
+                        print(f"[Search] PanSou API 返回 {len(all_results)} 个候选，筛选后 {len(results)} 个结果")
                         return results
     except Exception as e:
         print(f"[Search] PanSou API 不可用: {e}, 回退到 Playwright")
