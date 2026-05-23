@@ -343,6 +343,34 @@ async def batch_transfer_quark(urls):
                 except Exception as e:
                     print(f"[BatchQuark] 恢复 cookie 失败: {e}")
 
+            # 验证登录态：打开夸克首页检查是否已登录
+            check_page = await context.new_page()
+            logged_in = False
+            try:
+                await check_page.goto("https://pan.quark.cn/", timeout=15000, wait_until="domcontentloaded")
+                await check_page.wait_for_timeout(2000)
+                logged_in = await check_page.evaluate("""
+                    () => {
+                        // 未登录时页面会有登录按钮，登录后显示用户信息
+                        const loginBtns = document.querySelectorAll('text=登录, text=立即登录, button:has-text("登录")');
+                        if (loginBtns.length > 0) return false;
+                        // 如果页面包含"来自：分享""我的文件"等，说明已登录
+                        const body = document.body.textContent;
+                        return body.includes('来自：分享') || body.includes('我的文件');
+                    }
+                """)
+            except Exception as e:
+                print(f"[BatchQuark] 登录检查失败: {e}")
+            finally:
+                await check_page.close()
+
+            if not logged_in:
+                print("[BatchQuark] 未登录夸克，跳过转存")
+                await context.close()
+                for u in quark_urls:
+                    results[u] = u
+                return results
+
             # --- 阶段1: 真正并行保存（最多3个并发） ---
             save_sem = asyncio.Semaphore(3)
 
