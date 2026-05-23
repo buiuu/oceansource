@@ -452,9 +452,58 @@ async def batch_transfer_quark(urls):
 
 
 # ============================================================
-# 核心：Playwright 搜索 + 逐一点击获取真实链接
+# 核心：搜索（优先 PanSou API + Playwright fallback）
 # ============================================================
+import aiohttp
+
 async def search_and_get_real_urls(keyword, max_results=10):
+    """
+    优先使用 PanSou API（通过 Telegram 搜索，不受地域限制），
+    如果失败则 fallback 到 Playwright 搜索
+    """
+    # 尝试 PanSou API
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://so.252035.xyz/api/search",
+                params={"q": keyword, "limit": max_results, "type": "quark"},
+                timeout=20
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if "data" in data and data["data"]:
+                        # PanSou 返回 merged_by_type，按网盘类型分组
+                        merged = data["data"].get("merged_by_type", {})
+                        items = merged.get("quark", [])
+                        if not items:
+                            # 所有类型汇总
+                            for type_key, type_items in merged.items():
+                                items.extend(type_items)
+                        results = []
+                        for item in items[:max_results]:
+                            results.append({
+                                "name": item.get("note", ""),
+                                "time": item.get("datetime", ""),
+                                "time_label": "",
+                                "card_id": "",
+                                "size": "N/A",
+                                "source": f"pansou ({item.get('source', '')})",
+                                "real_url": item.get("url", ""),
+                                "transferred": False
+                            })
+                        # 标记夸克链接
+                        quark_urls = [
+                            item["real_url"] for item in results
+                            if item.get("real_url") and ("pan.quark.cn" in item.get("real_url", "") or "quark.cn" in item.get("real_url", ""))
+                        ]
+                        if quark_urls and os.path.exists(USER_DATA_DIR):
+                            print(f"[Quark] 后台转存 {len(quark_urls)} 个链接")
+                        print(f"[Search] PanSou API 返回 {len(results)} 个结果")
+                        return results
+    except Exception as e:
+        print(f"[Search] PanSou API 不可用: {e}, 回退到 Playwright")
+
+    # Fallback: Playwright 搜索
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
