@@ -840,6 +840,25 @@ def health():
     })
 
 
+@app.route("/api/update-quark-cookies", methods=["POST"])
+def update_quark_cookies():
+    """更新夸克 cookie 文件，供本地管理端调用"""
+    try:
+        data = request.get_json()
+        if not data or "cookies" not in data:
+            return jsonify({"error": "缺少 cookies 字段"}), 400
+        cookies = data["cookies"]
+        if not isinstance(cookies, list):
+            return jsonify({"error": "cookies 必须为数组"}), 400
+        os.makedirs(os.path.dirname(QUARK_STATE_PATH), exist_ok=True)
+        with open(QUARK_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"cookies": cookies}, f, ensure_ascii=False, indent=2)
+        print(f"[Cookie] 已更新 {len(cookies)} 个 cookie")
+        return jsonify({"ok": True, "count": len(cookies)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ============================================================
 # 4. 前端页面托管
 # ============================================================
