@@ -331,6 +331,18 @@ async def batch_transfer_quark(urls):
                 Object.defineProperty(navigator, 'webdriver', { get: () => false });
             """)
 
+            # 从 quark_state.json 恢复 cookie（Secret File 注入）
+            if os.path.exists(QUARK_STATE_PATH):
+                try:
+                    with open(QUARK_STATE_PATH, "r", encoding="utf-8") as f:
+                        state_data = json.load(f)
+                    cookies = state_data.get("cookies", [])
+                    if cookies:
+                        await context.add_cookies(cookies)
+                        print(f"[BatchQuark] 已从 {QUARK_STATE_PATH} 恢复 {len(cookies)} 个 cookie")
+                except Exception as e:
+                    print(f"[BatchQuark] 恢复 cookie 失败: {e}")
+
             # --- 阶段1: 真正并行保存（最多3个并发） ---
             save_sem = asyncio.Semaphore(3)
 
