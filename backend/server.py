@@ -767,8 +767,17 @@ def transfer_quark():
 # ============================================================
 @app.route("/api/health", methods=["GET"])
 def health():
+    git_hash = "unknown"
+    try:
+        import subprocess
+        result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        if result.returncode == 0:
+            git_hash = result.stdout.strip()
+    except Exception:
+        pass
     return jsonify({
         "status": "ok",
+        "git_hash": git_hash,
         "quark_profile_ready": os.path.exists(QUARK_STATE_PATH),
         "quark_state_path": QUARK_STATE_PATH,
         "quark_state_exists": os.path.exists(QUARK_STATE_PATH),
