@@ -18,7 +18,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install playwright && playwright install --with-deps chromium
+RUN pip install playwright && playwright install --with-deps chromium --path /ms-playwright
 
 COPY backend/ /app/
 
