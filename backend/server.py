@@ -476,8 +476,8 @@ async def search_and_get_real_urls(keyword, max_results=10):
     # 尝试 PanSou API
     try:
         async with aiohttp.ClientSession() as session:
-            # 多拉一些候选（请求 3 倍量），后续按关键词相关性筛选
-            fetch_limit = max(max_results * 3, 30)
+            # 拉取适量候选（请求 2 倍量），避免 Render 超时
+            fetch_limit = max(max_results * 2, 20)
             async with session.get(
                 "https://so.252035.xyz/api/search",
                 params={"q": keyword, "limit": fetch_limit, "type": "quark"},
@@ -508,15 +508,14 @@ async def search_and_get_real_urls(keyword, max_results=10):
                                 "transferred": False
                             })
 
-                        # 关键词相关性过滤：标题必须包含搜索词中的至少一个字
+                        # 关键词相关性排序：统计标题中匹配到的关键词字符数，匹配越多排越前
                         kw_chars = set(keyword.replace(" ", ""))
-                        matched = [r for r in all_results if any(c in r["name"] for c in kw_chars)]
-                        unmatched = [r for r in all_results if r not in matched]
-
-                        # 优先展示匹配的，不够 max_results 时用未匹配的补齐
-                        results = matched[:max_results]
-                        if len(results) < max_results:
-                            results += unmatched[:max_results - len(results)]
+                        for r in all_results:
+                            r["_score"] = sum(1 for c in kw_chars if c in r["name"])
+                        all_results.sort(key=lambda r: r["_score"], reverse=True)
+                        results = all_results[:max_results]
+                        for r in results:
+                            del r["_score"]
 
                         # 标记夸克链接
                         quark_urls = [
