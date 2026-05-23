@@ -28,6 +28,22 @@ USER_DATA_DIR = os.path.join(tempfile.gettempdir(), "quark_playwright_profile")
 
 # 夸克认证文件路径（Render Secret File 会挂载到 /etc/secrets/）
 QUARK_STATE_PATH = os.environ.get("QUARK_STATE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "quark_state.json"))
+# 可写路径，用于运行时更新 cookie（/etc/secrets/ 在 Render 上只读）
+QUARK_STATE_WRITABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "quark_state_override.json")
+
+def load_quark_cookies():
+    """加载夸克 cookie：优先读可写覆盖文件，其次读 Secret File"""
+    for path in [QUARK_STATE_WRITABLE, QUARK_STATE_PATH]:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                cookies = data.get("cookies", [])
+                if cookies:
+                    return cookies
+            except Exception:
+                pass
+    return []
 
 # 转存缓存文件
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "transfer_cache.json")
@@ -69,17 +85,11 @@ async def transfer_quark_link(real_url):
                 });
             """)
 
-            # 从 quark_state.json 恢复 cookie（Secret File 注入）
-            if os.path.exists(QUARK_STATE_PATH):
-                try:
-                    with open(QUARK_STATE_PATH, "r", encoding="utf-8") as f:
-                        state_data = json.load(f)
-                    cookies = state_data.get("cookies", [])
-                    if cookies:
-                        await context.add_cookies(cookies)
-                        print(f"[Quark] 已从 {QUARK_STATE_PATH} 恢复 {len(cookies)} 个 cookie")
-                except Exception as e:
-                    print(f"[Quark] 恢复 cookie 失败: {e}")
+            # 从 quark_state.json 恢复 cookie
+            cookies = load_quark_cookies()
+            if cookies:
+                await context.add_cookies(cookies)
+                print(f"[Quark] 已恢复 {len(cookies)} 个 cookie")
 
             page = await context.new_page()
 
@@ -331,17 +341,11 @@ async def batch_transfer_quark(urls):
                 Object.defineProperty(navigator, 'webdriver', { get: () => false });
             """)
 
-            # 从 quark_state.json 恢复 cookie（Secret File 注入）
-            if os.path.exists(QUARK_STATE_PATH):
-                try:
-                    with open(QUARK_STATE_PATH, "r", encoding="utf-8") as f:
-                        state_data = json.load(f)
-                    cookies = state_data.get("cookies", [])
-                    if cookies:
-                        await context.add_cookies(cookies)
-                        print(f"[BatchQuark] 已从 {QUARK_STATE_PATH} 恢复 {len(cookies)} 个 cookie")
-                except Exception as e:
-                    print(f"[BatchQuark] 恢复 cookie 失败: {e}")
+            # 从 quark_state.json 恢复 cookie
+            cookies = load_quark_cookies()
+            if cookies:
+                await context.add_cookies(cookies)
+                print(f"[BatchQuark] 已恢复 {len(cookies)} 个 cookie")
 
             # 验证登录态：打开夸克首页检查是否已登录
             check_page = await context.new_page()
@@ -836,6 +840,8 @@ def health():
         "quark_profile_ready": os.path.exists(QUARK_STATE_PATH),
         "quark_state_path": QUARK_STATE_PATH,
         "quark_state_exists": os.path.exists(QUARK_STATE_PATH),
+        "quark_override_exists": os.path.exists(QUARK_STATE_WRITABLE),
+        "cookies_loaded": len(load_quark_cookies()),
         "timestamp": time.time()
     })
 
@@ -850,8 +856,8 @@ def update_quark_cookies():
         cookies = data["cookies"]
         if not isinstance(cookies, list):
             return jsonify({"error": "cookies 必须为数组"}), 400
-        os.makedirs(os.path.dirname(QUARK_STATE_PATH), exist_ok=True)
-        with open(QUARK_STATE_PATH, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(QUARK_STATE_WRITABLE), exist_ok=True)
+        with open(QUARK_STATE_WRITABLE, "w", encoding="utf-8") as f:
             json.dump({"cookies": cookies}, f, ensure_ascii=False, indent=2)
         print(f"[Cookie] 已更新 {len(cookies)} 个 cookie")
         return jsonify({"ok": True, "count": len(cookies)})
