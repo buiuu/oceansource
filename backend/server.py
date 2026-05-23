@@ -410,8 +410,7 @@ async def batch_transfer_quark(urls):
 
             if saved_count == 0:
                 await context.close()
-                for u in quark_urls:
-                    results[u] = u
+                # 保存全部失败，返回空 dict 而不是原始 URL
                 return results
 
             # --- 阶段2: 批量分享 ---
@@ -711,8 +710,10 @@ def search():
         for orig_idx, item in quark_items:
             real_url = item["real_url"]
             if real_url in cache:
-                results[orig_idx]["real_url"] = cache[real_url]
-                results[orig_idx]["transferred"] = True
+                cached_url = cache[real_url]
+                if cached_url != real_url and cached_url.startswith("https://pan.quark.cn/s/"):
+                    results[orig_idx]["real_url"] = cached_url
+                    results[orig_idx]["transferred"] = True
             else:
                 uncached_urls.append(real_url)
 
@@ -742,7 +743,7 @@ def search():
                     real_url = item["real_url"]
                     if real_url in data:
                         new_url = data[real_url]
-                        if new_url.startswith("https://pan.quark.cn/s/"):
+                        if new_url.startswith("https://pan.quark.cn/s/") and new_url != real_url:
                             results[orig_idx]["real_url"] = new_url
                             results[orig_idx]["transferred"] = True
 
