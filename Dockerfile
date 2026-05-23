@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install playwright && playwright install --with-deps chromium
@@ -22,7 +24,6 @@ COPY backend/ /app/
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=5001
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV QUARK_STATE_PATH=/etc/secrets/quark_state.json
 
 EXPOSE 5001
