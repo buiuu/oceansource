@@ -348,15 +348,15 @@ async def batch_transfer_quark(urls):
             logged_in = False
             try:
                 await check_page.goto("https://pan.quark.cn/", timeout=15000, wait_until="domcontentloaded")
-                await check_page.wait_for_timeout(2000)
+                await check_page.wait_for_timeout(3000)
                 logged_in = await check_page.evaluate("""
                     () => {
-                        // 未登录时页面会有登录按钮，登录后显示用户信息
-                        const loginBtns = document.querySelectorAll('text=登录, text=立即登录, button:has-text("登录")');
-                        if (loginBtns.length > 0) return false;
-                        // 如果页面包含"来自：分享""我的文件"等，说明已登录
-                        const body = document.body.textContent;
-                        return body.includes('来自：分享') || body.includes('我的文件');
+                        const text = document.body.innerText;
+                        // 未登录时页面有登录引导
+                        if (text.includes('扫码登录') || text.includes('手机号登录') || text.includes('立即登录')) return false;
+                        // 已登录时能看到文件管理界面
+                        if (text.includes('我的文件') || text.includes('来自：分享')) return true;
+                        return false;
                     }
                 """)
             except Exception as e:
