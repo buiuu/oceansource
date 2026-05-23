@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Quark session state files (contain personal cookies/data)
+backend/quark_state.json
+backend/quark_state_edge.json
+backend/transfer_cache.json
+
+# Playwright
+backend/playwright_profile/
+
+# Logs
+*.log
+server_log.txt
+server.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini

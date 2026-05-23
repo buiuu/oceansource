@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OceanSource - 资源查询</title>
+<style>
+  :root {
+    --ocean-deep: #0b3d5c;
+    --ocean-mid: #1a6b8a;
+    --ocean-surface: #3ba4c9;
+    --ocean-foam: #c8e6f5;
+    --ocean-crest: #e8f4f8;
+    --sand: #f5f0e8;
+    --coral: #e8734a;
+    --text-primary: #1a2a36;
+    --text-secondary: #556c7c;
+    --text-muted: #8a9ba8;
+    --shadow-sm: 0 1px 3px rgba(11,61,92,0.08);
+    --shadow-md: 0 4px 16px rgba(11,61,92,0.10);
+    --shadow-lg: 0 12px 40px rgba(11,61,92,0.14);
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 20px;
+    --font-display: 'Georgia', 'Noto Serif SC', serif;
+    --font-body: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { font-size: 16px; scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    background: var(--ocean-crest);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Wave Canvas ── */
+  .wave-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .wave-stage canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ── Main Container ── */
+  .app-shell {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── Header ── */
+  .site-header {
+    padding: 48px 0 36px;
+    text-align: left;
+  }
+  .site-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .site-logo {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+    font-weight: 700;
+    color: var(--ocean-deep);
+    letter-spacing: -0.02em;
+  }
+  .site-logo span {
+    color: var(--ocean-surface);
+  }
+  .site-tagline {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    font-weight: 400;
+  }
+
+  /* ── Search Section ── */
+  .search-section {
+    margin-bottom: 48px;
+  }
+  .search-wrapper {
+    display: flex;
+    gap: 0;
+    background: #fff;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    transition: box-shadow 0.25s ease;
+  }
+  .search-wrapper:focus-within {
+    box-shadow: var(--shadow-lg), 0 0 0 3px rgba(59,164,201,0.2);
+  }
+  .search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    padding: 18px 24px;
+    font-size: 1.1rem;
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    background: transparent;
+    min-width: 0;
+  }
+  .search-input::placeholder {
+    color: var(--text-muted);
+  }
+  .search-btn {
+    flex-shrink: 0;
+    border: none;
+    background: var(--ocean-surface);
+    color: #fff;
+    padding: 18px 32px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s ease;
+    font-family: var(--font-body);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .search-btn:hover { background: #2d95b8; }
+  .search-btn:active { transform: scale(0.97); }
+  .search-btn:disabled {
+    background: #b0cfde;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    margin-bottom: 24px;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+  }
+  .status-bar.idle {
+    background: transparent;
+    color: var(--text-muted);
+  }
+  .status-bar.loading {
+    background: #ebf5fa;
+    color: var(--ocean-mid);
+  }
+  .status-bar.success {
+    background: #edf7ed;
+    color: #2d6a2d;
+  }
+  .status-bar.error {
+    background: #fdf0ed;
+    color: #b83a2a;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .idle .status-dot { background: #c0cdd4; }
+  .loading .status-dot { background: var(--ocean-surface); animation: pulse-dot 1.2s infinite; }
+  .success .status-dot { background: #4caf50; }
+  .error .status-dot { background: #e53935; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.6); }
+  }
+
+  /* ── Results ── */
+  .results-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .result-card {
+    background: #fff;
+    border-radius: var(--radius-md);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.25s ease, transform 0.2s ease;
+    border-left: 4px solid transparent;
+    animation: card-enter 0.4s ease both;
+  }
+  .result-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+  .result-card:nth-child(1) { animation-delay: 0.05s; }
+  .result-card:nth-child(2) { animation-delay: 0.10s; }
+  .result-card:nth-child(3) { animation-delay: 0.15s; }
+  .result-card:nth-child(4) { animation-delay: 0.20s; }
+  .result-card:nth-child(5) { animation-delay: 0.25s; }
+
+  .result-card.status-pending { border-left-color: #f0c040; }
+  .result-card.status-ready { border-left-color: #3ba4c9; }
+  .result-card.status-saving { border-left-color: var(--ocean-surface); }
+  .result-card.status-done { border-left-color: #4caf50; }
+  .result-card.status-failed { border-left-color: #e53935; }
+
+  @keyframes card-enter {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .result-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+  .real-url-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1a6b8a;
+    background: #c8e6f5;
+    border-radius: 10px;
+  }
+  .result-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+  .result-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .result-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: 20px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    font-family: var(--font-body);
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+  }
+  .btn-primary {
+    background: var(--ocean-surface);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #2d95b8; }
+  .btn-primary:active { transform: scale(0.96); }
+  .btn-outline {
+    background: transparent;
+    color: var(--ocean-mid);
+    border: 1.5px solid var(--ocean-foam);
+  }
+  .btn-outline:hover {
+    background: var(--ocean-foam);
+    border-color: var(--ocean-surface);
+  }
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    border-radius: 16px;
+  }
+
+  /* ── Share Link ── */
+  .share-link-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #f0f7fb;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--ocean-mid);
+    word-break: break-all;
+    border: 1px dashed var(--ocean-foam);
+  }
+  .copy-btn {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    border-radius: 14px;
+    font-size: 0.78rem;
+    border: 1px solid var(--ocean-foam);
+    background: #fff;
+    color: var(--ocean-mid);
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.2s ease;
+  }
+  .copy-btn:hover { background: var(--ocean-foam); }
+  .copy-btn.copied { background: #4caf50; color: #fff; border-color: #4caf50; }
+
+  /* ── Empty State ── */
+  .empty-state {
+    text-align: left;
+    padding: 60px 0;
+    color: var(--text-muted);
+  }
+  .empty-state .empty-illustration {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+  .empty-state h3 {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+  .empty-state p {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+  }
+
+  /* ── Loading Skeleton ── */
+  .skeleton-card {
+    background: #fff;
+    border-radius: var(--radius-md);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, #eef3f6 25%, #dce8ed 50%, #eef3f6 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+  .skeleton-line:first-child { width: 65%; height: 18px; }
+  .skeleton-line:nth-child(2) { width: 40%; }
+  .skeleton-line:last-child { width: 55%; margin-bottom: 0; }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── Footer ── */
+  .site-footer {
+    text-align: left;
+    padding: 40px 0 24px;
+    border-top: 1px solid rgba(11,61,92,0.08);
+    margin-top: 60px;
+  }
+  .site-footer p {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    .app-shell { padding: 0 16px 60px; }
+    .site-header { padding: 32px 0 24px; }
+    .search-input { padding: 14px 16px; font-size: 1rem; }
+    .search-btn { padding: 14px 20px; font-size: 0.9rem; }
+    .result-card { padding: 18px; }
+    .result-header { flex-direction: column; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wave-stage"><canvas id="waveCanvas"></canvas></div>
+
+<div class="app-shell">
+
+  <header class="site-header">
+    <div class="site-brand">
+      <h1 class="site-logo">Ocean<span>Source</span></h1>
+    </div>
+    <p class="site-tagline">输入关键词，全网资源直达你的网盘</p>
+  </header>
+
+  <section class="search-section">
+    <div class="search-wrapper">
+      <input
+        type="text"
+        class="search-input"
+        id="searchInput"
+        placeholder="输入资源名称，如「设计素材」「电子书」..."
+        autocomplete="off"
+        autofocus
+      >
+      <button class="search-btn" id="searchBtn" onclick="doSearch()">搜索资源</button>
+    </div>
+  </section>
+
+  <div class="status-bar idle" id="statusBar">
+    <span class="status-dot"></span>
+    <span id="statusText">输入关键词开始搜索</span>
+  </div>
+
+  <section class="results-section" id="resultsSection">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-illustration">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <path d="M8 44C6 40 4 32 8 28C12 20 24 16 36 22C48 28 56 40 52 48C48 56 36 52 28 48C20 44 12 48 8 44Z" fill="#c8e6f5" opacity="0.5"/>
+          <path d="M16 40C14 38 12 32 16 28C22 22 30 28 36 32C42 36 46 44 42 48C38 52 28 44 22 40C18 38 16 42 16 40Z" fill="#e8f4f8" opacity="0.6"/>
+        </svg>
+      </div>
+      <h3>探索资源海洋</h3>
+      <p>输入关键词，我们会在全网为你搜寻并自动转存至夸克网盘</p>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>OceanSource &mdash; 搜索 · 转存 · 分享，一步到位</p>
+  </footer>
+
+</div>
+
+<script>
+// ── Wave Animation ──
+(function() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, t = 0;
+  let animId;
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+
+    const layers = [
+      { amp: 50, freq: 0.012, speed: 0.6, yBase: h * 0.55, color: 'rgba(26,107,138,0.10)', thick: 3 },
+      { amp: 35, freq: 0.018, speed: 0.8, yBase: h * 0.58, color: 'rgba(59,164,201,0.08)', thick: 2.5 },
+      { amp: 25, freq: 0.024, speed: 1.0, yBase: h * 0.62, color: 'rgba(59,164,201,0.06)', thick: 2 },
+      { amp: 18, freq: 0.030, speed: 1.2, yBase: h * 0.66, color: 'rgba(200,230,245,0.15)', thick: 2 },
+      { amp: 12, freq: 0.036, speed: 1.4, yBase: h * 0.70, color: 'rgba(200,230,245,0.12)', thick: 1.5 },
+    ];
+
+    layers.forEach((layer, idx) => {
+      ctx.beginPath();
+      ctx.lineWidth = layer.thick;
+      ctx.strokeStyle = layer.color;
+      const phase = t * layer.speed;
+      for (let x = 0; x <= w; x += 3) {
+        const y = layer.yBase + Math.sin(x * layer.freq + phase) * layer.amp
+                  + Math.sin(x * layer.freq * 0.4 + phase * 1.3) * layer.amp * 0.3;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Fill below wave
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      const fillAlpha = parseFloat(layer.color.match(/[\d.]+\)$/)[0]) * 0.4;
+      ctx.fillStyle = layer.color.replace(/[\d.]+\)$/, fillAlpha + ')');
+      ctx.fill();
+    });
+
+    t += 0.016;
+    animId = requestAnimationFrame(draw);
+  }
+  draw();
+
+  window.addEventListener('beforeunload', () => cancelAnimationFrame(animId));
+})();
+
+// ── Search Logic ──
+const API_BASE = '';  // 使用相对路径，后端会代理所有请求
+
+function setStatus(state, text) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar ' + state;
+  document.getElementById('statusText').textContent = text;
+}
+
+function showSkeletons() {
+  const section = document.getElementById('resultsSection');
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = 'none';
+  let html = '';
+  for (let i = 0; i < 3; i++) {
+    html += '<div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>';
+  }
+  section.innerHTML = html;
+}
+
+function renderResults(items) {
+  const section = document.getElementById('resultsSection');
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = 'none';
+
+  if (!items || items.length === 0) {
+    section.innerHTML = `<div class="empty-state">
+      <div class="empty-illustration">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="22" stroke="#c8e6f5" stroke-width="1.5" fill="none"/>
+          <line x1="48" y1="48" x2="56" y2="56" stroke="#c8e6f5" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>未找到相关资源</h3>
+      <p>试试其他关键词，或缩短搜索词</p>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+  items.forEach((item, i) => {
+    const isTransferred = item.transferred && item.real_url;
+    let statusClass;
+    if (item.share_link || isTransferred) {
+      statusClass = 'status-done';
+    } else if (item.error) {
+      statusClass = 'status-failed';
+    } else if (item.real_url) {
+      statusClass = 'status-ready';
+    } else {
+      statusClass = 'status-pending';
+    }
+    html += `<div class="result-card ${statusClass}" id="card-${i}">
+      <div class="result-header">
+        <div>
+          <div class="result-title">${escapeHtml(item.name || '未知资源')}</div>
+          ${isTransferred ? '<div class="real-url-badge">你的分享链接</div>' : (item.real_url ? '<div class="real-url-badge">已获取链接</div>' : '')}
+          <div class="result-meta">
+            ${item.time_label ? '<span>' + escapeHtml(item.time_label) + '</span>' : ''}
+            ${item.time ? '<span>' + escapeHtml(item.time) + '</span>' : ''}
+            <span>${escapeHtml(item.source || 'yunso.net')}</span>
+            ${item.size && item.size !== 'N/A' ? '<span>' + escapeHtml(item.size) + '</span>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="result-actions" id="actions-${i}">
+        ${item.share_link ? renderShareLink(item.share_link, i) : (isTransferred ? renderShareLink(item.real_url, i) : renderActionBtn(i, item))}
+      </div>
+    </div>`;
+  });
+  section.innerHTML = html;
+}
+
+function renderActionBtn(idx, item) {
+  if (item.saving) {
+    return '<button class="btn btn-outline btn-sm" disabled>保存中...</button>';
+  }
+  if (item.error) {
+    return '<span style="color:#b83a2a;font-size:0.85rem;">转存失败: ' + escapeHtml(item.error) + '</span>';
+  }
+  if (!item.real_url) {
+    return '<span style="color:#8a9ba8;font-size:0.85rem;">链接获取中...</span>';
+  }
+  return `<button class="btn btn-primary btn-sm" onclick="saveToQuark(${idx})">保存到夸克网盘</button>`;
+}
+
+function renderShareLink(link, idx) {
+  return `<div class="share-link-box">
+    <span id="shareLink-${idx}">${escapeHtml(link)}</span>
+    <button class="copy-btn" id="copyBtn-${idx}" onclick="copyLink(${idx}, '${escapeAttr(link)}')">复制</button>
+  </div>`;
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '未知大小';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let size = parseInt(bytes);
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+  return size.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// ── Global results cache ──
+let currentResults = [];
+async function doSearch() {
+  const input = document.getElementById('searchInput');
+  const keyword = input.value.trim();
+  if (!keyword) return;
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  btn.textContent = '搜索中...';
+  setStatus('loading', '正在搜索「' + keyword + '」...');
+  showSkeletons();
+
+  try {
+    const resp = await fetch(API_BASE + '/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword, limit: 5 })
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      setStatus('error', data.error);
+      renderResults([]);
+    } else {
+      currentResults = (data.results || []).map(r => ({ ...r, saving: false, share_link: null }));
+      renderResults(currentResults);
+      const done = currentResults.filter(r => r.transferred).length;
+      const total = currentResults.length;
+      if (done === total) {
+        setStatus('success', `找到 ${total} 个资源，全部已就绪`);
+      } else {
+        setStatus('success', `找到 ${total} 个资源，${done} 个已就绪（转存耗时可再次搜索）`);
+      }
+    }
+  } catch (e) {
+    setStatus('error', '无法连接服务器，请确认后端已启动');
+    renderResults([]);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '搜索资源';
+  }
+}
+
+async function saveToQuark(idx) {
+  const item = currentResults[idx];
+  if (!item || item.saving || item.share_link) return;
+
+  currentResults[idx].saving = true;
+  renderResults(currentResults);
+  setStatus('loading', '正在获取资源链接...');
+
+  try {
+      const saveResp = await fetch(API_BASE + '/api/transfer-quark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: item.real_url || ''
+      })
+    });
+    const saveData = await saveResp.json();
+
+    if (!saveData.success) {
+      currentResults[idx].error = saveData.error || '转存失败';
+      currentResults[idx].saving = false;
+      setStatus('error', '保存失败: ' + (saveData.error || '未知错误'));
+    } else {
+      currentResults[idx].share_link = saveData.url;
+      currentResults[idx].saving = false;
+      setStatus('success', '资源已保存，分享链接已生成');
+    }
+  } catch (e) {
+    currentResults[idx].error = '请求失败: ' + e.message;
+    currentResults[idx].saving = false;
+    setStatus('error', '保存失败: ' + e.message);
+  }
+
+  renderResults(currentResults);
+  const doneCount = currentResults.filter(r => r.share_link).length;
+  if (doneCount > 0) {
+    setStatus('success', doneCount + ' 个资源已生成分享链接');
+  }
+}
+
+function copyLink(idx, link) {
+  navigator.clipboard.writeText(link).then(() => {
+    const btn = document.getElementById('copyBtn-' + idx);
+    btn.textContent = '已复制';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '复制';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    const range = document.createRange();
+    const el = document.getElementById('shareLink-' + idx);
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+}
+
+// ── Enter key ──
+document.getElementById('searchInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doSearch();
+});
+</script>
+</body>
+</html>
