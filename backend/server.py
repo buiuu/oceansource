@@ -538,12 +538,13 @@ async def search_and_get_real_urls(keyword, max_results=10):
                                 "transferred": False
                             })
 
-                        # 关键词相关性过滤+排序：至少匹配 1 个字符才保留
+                        # 关键词相关性过滤：2 字及以上关键词至少匹配 2 个字符
                         kw_chars = set(keyword.replace(" ", ""))
+                        min_match = 2 if len(kw_chars) >= 2 else 1
                         for r in all_results:
                             r["_score"] = sum(1 for c in kw_chars if c in r["name"])
-                        # 过滤掉完全不匹配的
-                        all_results = [r for r in all_results if r["_score"] > 0]
+                        # 过滤掉匹配不足的
+                        all_results = [r for r in all_results if r["_score"] >= min_match]
                         all_results.sort(key=lambda r: r["_score"], reverse=True)
                         results = all_results[:max_results]
                         for r in results:
