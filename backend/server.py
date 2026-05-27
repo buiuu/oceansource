@@ -513,41 +513,6 @@ async def search_and_get_real_urls(keyword, max_results=10):
 
         async def intercept_new_page(new_page):
             try:
-                # 不等待完整加载，立即获取 URL 即可
-                await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
-                url = new_page.url
-                cid = pending_card_id[0]
-                if cid and url and not url.startswith("https://www.yunso.net/"):
-                    real_urls[cid] = url
-                    got_url_event.set()
-                await new_page.close()
-            except Exception:
-                pass
-
-        context.on("page", intercept_new_page)
-
-        try:
-            # 使用用户提供的正确 URL
-            await page.goto(
-                f"https://www.yunso.net/index.php?wd={keyword}",
-                timeout=30000,
-                wait_until="domcontentloaded"
-            )
-            await page.wait_for_timeout(3000)
-
-    # Fallback: Playwright 搜索
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        real_urls = {}
-        pending_card_id = [None]
-        got_url_event = asyncio.Event()
-
-        async def intercept_new_page(new_page):
-            try:
-                # 不等待完整加载，立即获取 URL 即可
                 await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
                 url = new_page.url
                 cid = pending_card_id[0]
@@ -603,7 +568,7 @@ async def search_and_get_real_urls(keyword, max_results=10):
                 return results;
             }""")
 
-            print(f"[Search] 找到 {len(cards)} 个卡片")
+            print(f"[Search] yunso 找到 {len(cards)} 个卡片")
 
             # 逐一点击获取真实链接
             buttons = await page.query_selector_all("button.gosid")
@@ -636,12 +601,7 @@ async def search_and_get_real_urls(keyword, max_results=10):
                     "transferred": False
                 })
 
-            # 夸克链接后台异步转存（不阻塞搜索结果返回）
-            quark_urls = [item["real_url"] for item in results if item.get("real_url") and "pan.quark.cn" in item["real_url"]]
-            if quark_urls and os.path.exists(USER_DATA_DIR):
-                print(f"[Quark] 后台转存 {len(quark_urls)} 个链接")
-                for url in quark_urls:
-                    print(f"[Quark] 待转存: {url}")
+            print(f"[Search] yunso 最终返回 {len(results)} 个结果")
 
         except Exception as e:
             print(f"[Search] 浏览器搜索异常: {e}")
