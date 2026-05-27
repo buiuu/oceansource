@@ -511,7 +511,7 @@
 })();
 
 // ── Search Logic ──
-const API_BASE = 'https://oceansource-api.onrender.com';  // Render 后端
+const API_BASE = '';  // 自动使用当前服务器（VPS 部署用）
 
 function setStatus(state, text) {
   const bar = document.getElementById('statusBar');
@@ -531,56 +531,7 @@ function showSkeletons() {
 }
 
 function renderResults(items) {
-  const section = document.getElementById('resultsSection');
-  const emptyState = document.getElementById('emptyState');
-  if (emptyState) emptyState.style.display = 'none';
-
-  if (!items || items.length === 0) {
-    section.innerHTML = `<div class="empty-state">
-      <div class="empty-illustration">
-        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-          <circle cx="32" cy="32" r="22" stroke="#c8e6f5" stroke-width="1.5" fill="none"/>
-          <line x1="48" y1="48" x2="56" y2="56" stroke="#c8e6f5" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <h3>未找到相关资源</h3>
-      <p>试试其他关键词，或缩短搜索词</p>
-    </div>`;
-    return;
-  }
-
-  let html = '';
-  items.forEach((item, i) => {
-    const isTransferred = item.transferred && item.real_url;
-    let statusClass;
-    if (item.share_link || isTransferred) {
-      statusClass = 'status-done';
-    } else if (item.error) {
-      statusClass = 'status-failed';
-    } else if (item.real_url) {
-      statusClass = 'status-ready';
-    } else {
-      statusClass = 'status-pending';
-    }
-    html += `<div class="result-card ${statusClass}" id="card-${i}">
-      <div class="result-header">
-        <div>
-          <div class="result-title">${escapeHtml(item.name || '未知资源')}</div>
-          ${isTransferred ? '<div class="real-url-badge">你的分享链接</div>' : (item.real_url ? '<div class="real-url-badge">已获取链接</div>' : '')}
-          <div class="result-meta">
-            ${item.time_label ? '<span>' + escapeHtml(item.time_label) + '</span>' : ''}
-            ${item.time ? '<span>' + escapeHtml(item.time) + '</span>' : ''}
-            <span>${escapeHtml(item.source || 'yunso.net')}</span>
-            ${item.size && item.size !== 'N/A' ? '<span>' + escapeHtml(item.size) + '</span>' : ''}
-          </div>
-        </div>
-      </div>
-      <div class="result-actions" id="actions-${i}">
-        ${item.share_link ? renderShareLink(item.share_link, i) : (isTransferred ? renderShareLink(item.real_url, i) : renderActionBtn(i, item))}
-      </div>
-    </div>`;
-  });
-  section.innerHTML = html;
+  renderResultsStreaming(items);
 }
 
 function renderActionBtn(idx, item) {
@@ -632,7 +583,7 @@ async function doSearch() {
   const btn = document.getElementById('searchBtn');
   btn.disabled = true;
   btn.textContent = '搜索中...';
-  setStatus('loading', '正在搜索「' + keyword + '」...');
+  setStatus('loading', '实时搜索，耐心等待一下呢亲亲');
   showSkeletons();
 
   try {
@@ -648,7 +599,8 @@ async function doSearch() {
       renderResults([]);
     } else {
       currentResults = (data.results || []).map(r => ({ ...r, saving: false, share_link: null }));
-      renderResults(currentResults);
+      // 流式展示：逐个卡片渐入
+      renderResultsStreaming(currentResults);
       const done = currentResults.filter(r => r.transferred).length;
       const total = currentResults.length;
       if (done === total) {
@@ -664,6 +616,67 @@ async function doSearch() {
     btn.disabled = false;
     btn.textContent = '搜索资源';
   }
+}
+
+// 流式渲染：逐个卡片渐入
+function renderResultsStreaming(items) {
+  const section = document.getElementById('resultsSection');
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = 'none';
+
+  if (!items || items.length === 0) {
+    section.innerHTML = `<div class="empty-state">
+      <div class="empty-illustration">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="22" stroke="#c8e6f5" stroke-width="1.5" fill="none"/>
+          <line x1="48" y1="48" x2="56" y2="56" stroke="#c8e6f5" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>未找到相关资源</h3>
+      <p>试试其他关键词，或缩短搜索词</p>
+    </div>`;
+    return;
+  }
+
+  // 先清空，再逐个添加
+  section.innerHTML = '';
+  items.forEach((item, i) => {
+    setTimeout(() => {
+      const card = buildResultCard(item, i);
+      section.insertAdjacentHTML('beforeend', card);
+    }, i * 150); // 每个卡片间隔 150ms
+  });
+}
+
+function buildResultCard(item, i) {
+  const isTransferred = item.transferred && item.real_url;
+  let statusClass;
+  if (item.share_link || isTransferred) {
+    statusClass = 'status-done';
+  } else if (item.error) {
+    statusClass = 'status-failed';
+  } else if (item.real_url) {
+    statusClass = 'status-ready';
+  } else {
+    statusClass = 'status-pending';
+  }
+  return `<div class="result-card ${statusClass}" id="card-${i}" style="animation: card-enter 0.4s ease both;">
+    <div class="result-header">
+      <div>
+        <div class="result-title">${escapeHtml(item.name || '未知资源')}</div>
+        ${isTransferred ? '<div class="real-url-badge">你的分享链接</div>' : (item.real_url ? '<div class="real-url-badge">已获取链接</div>' : '')}
+        <div class="result-meta">
+          ${item.time_label ? '<span>' + escapeHtml(item.time_label) + '</span>' : ''}
+          ${item.time ? '<span>' + escapeHtml(item.time) + '</span>' : ''}
+          <span>${escapeHtml(item.source || 'yunso.net')}</span>
+          ${item.size && item.size !== 'N/A' ? '<span>' + escapeHtml(item.size) + '</span>' : ''}
+        </div>
+      </div>
+    </div>
+    <div class="result-actions" id="actions-${i}">
+      ${item.share_link ? renderShareLink(item.share_link, i) : (isTransferred ? renderShareLink(item.real_url, i) : renderActionBtn(i, item))}
+    </div>
+  </div>`;
 }
 
 async function saveToQuark(idx) {

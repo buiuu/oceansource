@@ -681,7 +681,7 @@ async def search_and_get_real_urls(keyword, max_results=10):
 
 
 # ============================================================
-# 1. 搜索接口
+# 1. 搜索接口（流式返回）
 # ============================================================
 @app.route("/api/search", methods=["POST"])
 def search():
@@ -707,6 +707,42 @@ def search():
                 "results": [],
                 "message": "未找到相关资源，请尝试其他关键词"
             })
+
+        # 强化过滤：确保名称包含所有关键词（中文逐字，英文单词）
+        def contains_all_keywords(name, kw):
+            if not name:
+                return False
+            name_lower = name.lower()
+            kw_lower = kw.lower()
+            # 中文逐字检查
+            if any('\u4e00' <= c <= '\u9fff' for c in kw):
+                for char in kw:
+                    if char in name:
+                        continue
+                    return False
+                return True
+            # 英文单词检查
+            else:
+                words = kw_lower.split()
+                for word in words:
+                    if len(word) >= 3 and word not in name_lower:
+                        return False
+                return True
+
+        filtered_results = []
+        for r in results:
+            if contains_all_keywords(r.get("name", ""), keyword):
+                filtered_results.append(r)
+            else:
+                print(f"[Filter] 丢弃不匹配结果: {r.get('name')}")
+
+        if not filtered_results:
+            return jsonify({
+                "results": [],
+                "message": f"未找到完全匹配「{keyword}」的资源，请尝试其他关键词"
+            })
+
+        results = filtered_results[:limit]
 
         # 对夸克链接：缓存命中直接用，未缓存的同步转存
         cache = load_cache()
@@ -753,7 +789,7 @@ def search():
                             results[orig_idx]["real_url"] = new_url
                             results[orig_idx]["transferred"] = True
 
-        return jsonify({"results": results, "total": len(results)})
+        return jsonify({"results": results, "total": len(results), "streaming": True})
 
     except Exception as e:
         print(f"[API] 搜索异常: {e}")
