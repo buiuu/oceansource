@@ -495,75 +495,45 @@ async def batch_transfer_quark(urls):
 
 
 # ============================================================
-# 核心：搜索（优先 PanSou API + Playwright fallback）
+# 核心：搜索（仅使用 yunso.net）
 # ============================================================
-import aiohttp
 
 async def search_and_get_real_urls(keyword, max_results=10):
     """
-    优先使用 PanSou API（通过 Telegram 搜索，不受地域限制），
-    如果失败则 fallback 到 Playwright 搜索
+    仅使用 yunso.net 搜索，确保结果准确
     """
-    # 尝试 PanSou API
-    try:
-        async with aiohttp.ClientSession() as session:
-            # 拉取适量候选（请求 2 倍量），避免 Render 超时
-            fetch_limit = max(max_results * 3, 30)
-            async with session.get(
-                "https://so.252035.xyz/api/search",
-                params={"q": keyword, "limit": fetch_limit},
-                timeout=20
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if "data" in data and data["data"]:
-                        # PanSou 返回 merged_by_type，按网盘类型分组
-                        merged = data["data"].get("merged_by_type", {})
-                        # 汇总所有网盘类型的结果
-                        items = []
-                        for type_items in merged.values():
-                            items.extend(type_items)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-                        # 构建所有候选结果
-                        all_results = []
-                        for item in items:
-                            all_results.append({
-                                "name": item.get("note", ""),
-                                "time": item.get("datetime", ""),
-                                "time_label": "",
-                                "card_id": "",
-                                "size": "N/A",
-                                "source": f"pansou ({item.get('source', '')})",
-                                "real_url": item.get("url", ""),
-                                "transferred": False
-                            })
+        real_urls = {}
+        pending_card_id = [None]
+        got_url_event = asyncio.Event()
 
-                        # 关键词相关性过滤：2 字及以上关键词至少匹配 2 个字符
-                        kw_chars = set(keyword.replace(" ", ""))
-                        min_match = 2 if len(kw_chars) >= 2 else 1
-                        for r in all_results:
-                            r["_score"] = sum(1 for c in kw_chars if c in r["name"])
-                        # 过滤掉匹配不足的
-                        all_results = [r for r in all_results if r["_score"] >= min_match]
-                        all_results.sort(key=lambda r: r["_score"], reverse=True)
-                        results = all_results[:max_results]
-                        for r in results:
-                            del r["_score"]
+        async def intercept_new_page(new_page):
+            try:
+                # 不等待完整加载，立即获取 URL 即可
+                await new_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                url = new_page.url
+                cid = pending_card_id[0]
+                if cid and url and not url.startswith("https://www.yunso.net/"):
+                    real_urls[cid] = url
+                    got_url_event.set()
+                await new_page.close()
+            except Exception:
+                pass
 
-                        # 标记夸克链接
-                        quark_urls = [
-                            item["real_url"] for item in results
-                            if item.get("real_url") and ("pan.quark.cn" in item.get("real_url", "") or "quark.cn" in item.get("real_url", ""))
-                        ]
-                        if quark_urls and os.path.exists(USER_DATA_DIR):
-                            print(f"[Quark] 后台转存 {len(quark_urls)} 个链接")
-                        print(f"[Search] PanSou API 返回 {len(all_results)} 个候选，筛选后 {len(results)} 个结果")
-                        if results:
-                            return results
-                        else:
-                            print(f"[Search] PanSou 筛选后无结果，回退到 yunso")
-    except Exception as e:
-        print(f"[Search] PanSou API 不可用: {e}, 回退到 Playwright")
+        context.on("page", intercept_new_page)
+
+        try:
+            # 使用用户提供的正确 URL
+            await page.goto(
+                f"https://www.yunso.net/index.php?wd={keyword}",
+                timeout=30000,
+                wait_until="domcontentloaded"
+            )
+            await page.wait_for_timeout(3000)
 
     # Fallback: Playwright 搜索
     async with async_playwright() as p:
@@ -711,40 +681,8 @@ def search():
                 "message": "未找到相关资源，请尝试其他关键词"
             })
 
-        # 宽松过滤：只要名称包含任意关键词即可（中文至少匹配1字，英文至少匹配一个单词）
-        def contains_any_keyword(name, kw):
-            if not name:
-                return False
-            name_lower = name.lower()
-            kw_lower = kw.lower()
-            # 中文逐字检查
-            if any('\u4e00' <= c <= '\u9fff' for c in kw):
-                for char in kw:
-                    if char in name:
-                        return True
-                return False
-            # 英文单词检查
-            else:
-                words = kw_lower.split()
-                for word in words:
-                    if len(word) >= 2 and word in name_lower:
-                        return True
-                return False
-
-        filtered_results = []
-        for r in results:
-            if contains_any_keyword(r.get("name", ""), keyword):
-                filtered_results.append(r)
-            else:
-                print(f"[Filter] 丢弃不匹配结果: {r.get('name')}")
-
-        if not filtered_results:
-            return jsonify({
-                "results": [],
-                "message": f"未找到相关资源，请尝试其他关键词"
-            })
-
-        results = filtered_results[:limit]
+        # yunso.net 已按关键词搜索，直接信任其结果
+        results = results[:limit]
 
         # 对夸克链接：缓存命中直接用，未缓存的同步转存
         cache = load_cache()
