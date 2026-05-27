@@ -575,6 +575,9 @@ function escapeAttr(str) {
 
 // ── Global results cache ──
 let currentResults = [];
+let searchStartTime = 0;
+const MIN_LOADING_MS = 1000; // 最小加载时间，防止骨架屏一闪而过
+
 async function doSearch() {
   const input = document.getElementById('searchInput');
   const keyword = input.value.trim();
@@ -585,6 +588,7 @@ async function doSearch() {
   btn.textContent = '搜索中...';
   setStatus('loading', '实时搜索，耐心等待一下呢亲亲');
   showSkeletons();
+  searchStartTime = Date.now();
 
   try {
     const resp = await fetch(API_BASE + '/api/search', {
@@ -593,6 +597,12 @@ async function doSearch() {
       body: JSON.stringify({ keyword, limit: 5 })
     });
     const data = await resp.json();
+
+    // 确保骨架屏至少显示 MIN_LOADING_MS
+    const elapsed = Date.now() - searchStartTime;
+    if (elapsed < MIN_LOADING_MS) {
+      await new Promise(r => setTimeout(r, MIN_LOADING_MS - elapsed));
+    }
 
     if (data.error) {
       setStatus('error', data.error);
@@ -610,6 +620,10 @@ async function doSearch() {
       }
     }
   } catch (e) {
+    const elapsed = Date.now() - searchStartTime;
+    if (elapsed < MIN_LOADING_MS) {
+      await new Promise(r => setTimeout(r, MIN_LOADING_MS - elapsed));
+    }
     setStatus('error', '无法连接服务器，请确认后端已启动');
     renderResults([]);
   } finally {

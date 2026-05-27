@@ -558,7 +558,10 @@ async def search_and_get_real_urls(keyword, max_results=10):
                         if quark_urls and os.path.exists(USER_DATA_DIR):
                             print(f"[Quark] 后台转存 {len(quark_urls)} 个链接")
                         print(f"[Search] PanSou API 返回 {len(all_results)} 个候选，筛选后 {len(results)} 个结果")
-                        return results
+                        if results:
+                            return results
+                        else:
+                            print(f"[Search] PanSou 筛选后无结果，回退到 yunso")
     except Exception as e:
         print(f"[Search] PanSou API 不可用: {e}, 回退到 Playwright")
 
@@ -608,7 +611,7 @@ async def search_and_get_real_urls(keyword, max_results=10):
                     let name = '';
                     for (const line of lines) {
                         const cc = (line.match(/[\\u4e00-\\u9fff]/g) || []).length;
-                        if (cc > 2 && line.length > 5 &&
+                        if (cc >= 2 && line.length >= 2 &&
                             !line.includes('前') && !line.includes('分') &&
                             !line.includes('合') && !line.match(/^\\d+、$/) &&
                             !line.match(/^\\d{4}-\\d{2}-\\d{2}/)) {
@@ -708,8 +711,8 @@ def search():
                 "message": "未找到相关资源，请尝试其他关键词"
             })
 
-        # 强化过滤：确保名称包含所有关键词（中文逐字，英文单词）
-        def contains_all_keywords(name, kw):
+        # 宽松过滤：只要名称包含任意关键词即可（中文至少匹配1字，英文至少匹配一个单词）
+        def contains_any_keyword(name, kw):
             if not name:
                 return False
             name_lower = name.lower()
@@ -718,20 +721,19 @@ def search():
             if any('\u4e00' <= c <= '\u9fff' for c in kw):
                 for char in kw:
                     if char in name:
-                        continue
-                    return False
-                return True
+                        return True
+                return False
             # 英文单词检查
             else:
                 words = kw_lower.split()
                 for word in words:
-                    if len(word) >= 3 and word not in name_lower:
-                        return False
-                return True
+                    if len(word) >= 2 and word in name_lower:
+                        return True
+                return False
 
         filtered_results = []
         for r in results:
-            if contains_all_keywords(r.get("name", ""), keyword):
+            if contains_any_keyword(r.get("name", ""), keyword):
                 filtered_results.append(r)
             else:
                 print(f"[Filter] 丢弃不匹配结果: {r.get('name')}")
@@ -739,7 +741,7 @@ def search():
         if not filtered_results:
             return jsonify({
                 "results": [],
-                "message": f"未找到完全匹配「{keyword}」的资源，请尝试其他关键词"
+                "message": f"未找到相关资源，请尝试其他关键词"
             })
 
         results = filtered_results[:limit]
